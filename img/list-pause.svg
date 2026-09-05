@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="35" height="35">
+  <!-- Spotify Green Background -->
+  <circle cx="12" cy="12" r="12" fill="#1ed760" />
+  
+  <!-- Left Pause Bar -->
+  <rect x="8" y="7" width="2.5" height="10" fill="#000000" />
+  
+  <!-- Right Pause Bar -->
+  <rect x="13.5" y="7" width="2.5" height="10" fill="#000000" />
+</svg>
