@@ -778,6 +778,17 @@ body {
 }
 
 @media (max-width: 396px) {
+
+    .spotifyPlaylists {
+        padding: 5px;
+    }
+
+    .spotifyPlaylists>h1 {
+        margin-left: 10px;
+    }
+}
+
+@media (max-width: 375px) {
     .cardContainer {
         grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
     }
