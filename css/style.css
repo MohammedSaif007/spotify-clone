@@ -780,7 +780,7 @@ body {
 @media (max-width: 396px) {
 
     .spotifyPlaylists {
-        padding: 5px;
+        padding: 0px;
     }
 
     .spotifyPlaylists>h1 {
