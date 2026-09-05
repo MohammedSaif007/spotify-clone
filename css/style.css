@@ -775,12 +775,4 @@ body {
     .left {
         width: 100%;
     }
-
-    .cardContainer {
-        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    }
-
-    .play-btn {
-        top: 125px;
-    }
 }
