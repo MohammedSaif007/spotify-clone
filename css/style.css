@@ -776,3 +776,9 @@ body {
         width: 100%;
     }
 }
+
+@media (max-width: 396px) {
+    .cardContainer {
+        grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+    }
+}
