@@ -1,10 +1,16 @@
 console.log("Lets write JavaScript");
 
+// supabase URLs
+const SUPABASE_URL = "https://dnzrnfaflaqolqffkzfh.supabase.co";
+const SUPABASE_STORAGE_URL = `${SUPABASE_URL}/storage/v1/object/public/songs`;
+const SUPABASE_KEY = "sb_publishable_pZfYk7kyn6VAY53lzslOcA_xUq05zeN";
+
 // global variables
 let songs;
 let currentIndex = 0;
 let currentTrack = "";
 let currentPlaylist = "";
+let pendingSeek = null;
 
 // seconds to minutes time format converter
 function formatTime(seconds) {
@@ -18,72 +24,92 @@ function formatTime(seconds) {
 }
 
 async function getSongs(folder) {
-    // Get the songs folder
-    let a = await fetch(`http://127.0.0.1:5500/${folder}/`);
-    let response = await a.text();
 
-    let div = document.createElement("div");
-    div.innerHTML = response;
+    // Decode the folder first because it may already contain %20
+    folder = decodeURIComponent(folder);
 
-    let as = div.getElementsByTagName("a");
+    // Remove "songs/" from the beginning
+    folder = folder.replace(/^songs[\\/]/, "");
+
+    // Fetch info.json from Supabase
+    const infoResponse = await fetch(
+        `${SUPABASE_STORAGE_URL}/${encodeURIComponent(folder)}/info.json`
+    );
+
+    if (!infoResponse.ok) {
+        throw new Error(`Could not load info.json: ${infoResponse.status}`);
+    }
+
+    const info = await infoResponse.json();
 
     songs = [];
 
-    for (let index = 0; index < as.length; index++) {
+    // Create URLs for all songs
+    for (const song of info.songs) {
 
-        const element = as[index];
+        const songURL =
+            `${SUPABASE_STORAGE_URL}/${encodeURIComponent(folder)}/${encodeURIComponent(song.file)}`;
 
-        if (element.href.endsWith(".mp3")) {
-            songs.push(element.href);
-        }
+        songs.push(songURL);
     }
 
-    // Fetch info.json for song name and artist
-    const infoResponse = await fetch(`http://127.0.0.1:5500/${folder}/info.json`)
-    const info = await infoResponse.json();
+    // Location where song list will be displayed
+    let songUL = document
+        .querySelector(".songList")
+        .getElementsByTagName("ul")[0];
 
-
-    // this line is used for telling the location where to push  or show the song list
-    // here [0] is used because querySelector return array even if only one ul present so to select 0 element
-    let songUL = document.querySelector(".songList").getElementsByTagName("ul")[0]
     songUL.innerHTML = "";
 
-    // this is for skiping null values that dont contain music""
+    // Create song list
     for (const song of songs) {
+
         if (!song) {
             continue;
         }
 
-        // get the file name from the URL in normal text form
-        let songName = decodeURIComponent(song.split("/").pop());
+        // Get filename from URL
+        let songName = decodeURIComponent(
+            song.split("/").pop()
+        );
 
-        // finding the matching song in the info.json
-        const songData = info.songs.find(item => item.file === songName);
+        // Find matching song in info.json
+        const songData = info.songs.find(
+            item => item.file === songName
+        );
 
-        // this gives the song cover image of li
+        // Song cover
         let songCover = songData.cover
-            ? `${folder}/${songData.cover}`
-            : `${folder}/cover.jpg`;
+            ? `${SUPABASE_STORAGE_URL}/${encodeURIComponent(folder)}/${encodeURIComponent(songData.cover)}`
+            : `${SUPABASE_STORAGE_URL}/${encodeURIComponent(folder)}/cover.jpg`;
 
         songUL.innerHTML += `
-                        <li data-song="${song}">
-                            <div class="cover-box">
-                                <img 
-                                class="song-cover"
-                                src="${songCover}"
-                                onerror="this.onerror=null; this.src='img/music.svg'; this.classList.add('invert');">
-                            </div>
-                            <div class="info">
-                                <div>${songData.name}</div>
-                                <div>${songData.artist}</div>
-                            </div>
-                            <div class="playNow">
-                                <img class="list-btn" style="height: 34px;" src="img/list-play.svg" alt="button">
-                            </div>
-                            <div class="music-visualizer">
-                                <img src="img/level.svg" alt="">
-                            </div>
-                        </li>`
+            <li data-song="${song}">
+
+                <div class="cover-box">
+                    <img
+                        class="song-cover"
+                        src="${songCover}"
+                        onerror="this.onerror=null; this.src='img/music.svg'; this.classList.add('invert');">
+                </div>
+
+                <div class="info">
+                    <div>${songData.name}</div>
+                    <div>${songData.artist}</div>
+                </div>
+
+                <div class="playNow">
+                    <img
+                        class="list-btn"
+                        style="height: 34px;"
+                        src="img/list-play.svg"
+                        alt="button">
+                </div>
+
+                <div class="music-visualizer">
+                    <img src="img/level.svg" alt="">
+                </div>
+
+            </li>`;
     }
 
     return songs;
@@ -100,7 +126,11 @@ const playMusic = (track) => {
 
     currentTrack = track
     currentSong.src = track
-    currentSong.play();
+    currentSong.play().catch(error => {
+        if (error.name !== "AbortError") {
+            console.error(error);
+        }
+    });
 
     // Main playbar button
     play.src = "img/pause.svg";
@@ -151,44 +181,126 @@ const playMusic = (track) => {
 }
 
 async function displayAlbums() {
-    let a = await fetch("http://127.0.0.1:5500/songs/");
-    let response = await a.text();
 
-    let div = document.createElement("div");
-    div.innerHTML = response;
-    let anchors = div.getElementsByTagName("a");
-    for (const e of anchors) {
-        if (e.href.includes("/songs/")) {
-            const folder = e.href.split("/").slice(-2)[1]
-            const a = await fetch(`http://127.0.0.1:5500/songs/${folder}/info.json`);
-            const response = await a.json();
+    try {
 
-            let cardContainer = document.querySelector(".cardContainer")
-            cardContainer.innerHTML += `<div data-folder=${folder} class="card">
-                        <div class="play">
-                            <button class="play-btn">
-                                <svg class="card-play-icon" width="56" height="56" viewBox="0 0 56 56" fill="none">
-                                    <circle cx="28" cy="28" r="28" fill="#1ED760" />
-                                    <path d="M23 18.5L39 28L23 37.5V18.5Z" fill="black" />
-                                </svg>
-                            </button>
-                            <img src="/songs/${folder}/cover.jpg">
-                        </div>
-                        
-                        <h3>${response.title}</h3>
-                        <p>${response.description}</p>
-                    </div>`
+        const response = await fetch(
+            `${SUPABASE_URL}/storage/v1/object/list/songs`,
+            {
+                method: "POST",
+                headers: {
+                    apikey: SUPABASE_KEY,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    prefix: "",
+                    limit: 100,
+                    sortBy: {
+                        column: "name",
+                        order: "asc"
+                    }
+                })
+            }
+        );
+
+
+        if (!response.ok) {
+            const error = await response.text();
+            console.error("Supabase error:", error);
+            return;
         }
+
+        const items = await response.json();
+
+        const cardContainer =
+            document.querySelector(".cardContainer");
+
+        cardContainer.innerHTML = "";
+
+        for (const item of items) {
+
+            // Folder
+            if (item.id === null) {
+
+                const folder = item.name;
+
+                const infoResponse = await fetch(
+                    `${SUPABASE_STORAGE_URL}/${encodeURIComponent(folder)}/info.json`
+                );
+
+                if (!infoResponse.ok) {
+                    console.error(
+                        `Could not load info.json for ${folder}`
+                    );
+                    continue;
+                }
+
+                const info = await infoResponse.json();
+
+                const cover = info.cover
+                    ? `${SUPABASE_STORAGE_URL}/${encodeURIComponent(folder)}/${encodeURIComponent(info.cover)}`
+                    : `${SUPABASE_STORAGE_URL}/${encodeURIComponent(folder)}/cover.jpg`;
+
+                // YOUR EXISTING CARD
+                cardContainer.innerHTML += `
+                    <div data-folder="${folder}" class="card">
+
+                        <div class="play">
+
+                            <button class="play-btn">
+
+                                <svg class="card-play-icon"
+                                     width="56"
+                                     height="56"
+                                     viewBox="0 0 56 56"
+                                     fill="none">
+
+                                    <circle
+                                        cx="28"
+                                        cy="28"
+                                        r="28"
+                                        fill="#1ED760"
+                                    />
+
+                                    <path
+                                        d="M23 18.5L39 28L23 37.5V18.5Z"
+                                        fill="black"
+                                    />
+
+                                </svg>
+
+                            </button>
+
+                            <img src="${cover}">
+
+                        </div>
+
+                        <h3>${info.title}</h3>
+
+                        <p>${info.description}</p>
+
+                    </div>
+                `;
+            }
+        }
+
+    } catch (error) {
+
+        console.error("displayAlbums error:", error);
+
     }
 }
 
 function getImageColor(imageSrc) {
     return new Promise((resolve) => {
+
         const img = new Image();
 
-        img.src = imageSrc;
+        // Allow cross-origin image access
+        img.crossOrigin = "anonymous";
 
         img.onload = () => {
+
             const canvas = document.createElement("canvas");
             const ctx = canvas.getContext("2d");
 
@@ -197,37 +309,52 @@ function getImageColor(imageSrc) {
 
             ctx.drawImage(img, 0, 0);
 
-            const imageData = ctx.getImageData(
-                0,
-                0,
-                canvas.width,
-                canvas.height
-            );
+            try {
 
-            let red = 0;
-            let green = 0;
-            let blue = 0;
+                const imageData = ctx.getImageData(
+                    0,
+                    0,
+                    canvas.width,
+                    canvas.height
+                );
 
-            const pixels = imageData.data;
+                let r = 0;
+                let g = 0;
+                let b = 0;
 
-            for (let i = 0; i < pixels.length; i += 4) {
-                red += pixels[i];
-                green += pixels[i + 1];
-                blue += pixels[i + 2];
+                const pixels = imageData.data;
+
+                for (let i = 0; i < pixels.length; i += 4) {
+                    r += pixels[i];
+                    g += pixels[i + 1];
+                    b += pixels[i + 2];
+                }
+
+                const pixelCount = pixels.length / 4;
+
+                r = Math.floor(r / pixelCount);
+                g = Math.floor(g / pixelCount);
+                b = Math.floor(b / pixelCount);
+
+                resolve(`rgb(${r}, ${g}, ${b})`);
+
+            } catch (error) {
+
+                console.error("Could not read image color:", error);
+
+                // Fallback color
+                resolve("rgb(18, 18, 18)");
             }
-
-            const pixelCount = pixels.length / 4;
-
-            red = Math.floor(red / pixelCount);
-            green = Math.floor(green / pixelCount);
-            blue = Math.floor(blue / pixelCount);
-
-            resolve(getSafeColor(red, green, blue));
         };
 
         img.onerror = () => {
-            resolve("rgb(30, 30, 30)");
+            console.error("Could not load image:", imageSrc);
+
+            // Fallback color
+            resolve("rgb(18, 18, 18)");
         };
+
+        img.src = imageSrc;
     });
 }
 
@@ -368,8 +495,31 @@ async function main() {
 
     // this for controlling the song by seekbar
     seekbar.addEventListener("input", () => {
-        currentSong.currentTime = (seekbar.value / 100) * currentSong.duration;
-    })
+
+        if (!currentTrack) return;
+
+        const duration = currentSong.duration;
+
+        if (!isNaN(duration) && duration > 0) {
+            currentSong.currentTime =
+                (seekbar.value / 100) * duration;
+
+        } else {
+            pendingSeek = Number(seekbar.value);
+        }
+    });
+
+    // this remember the seekbar drag when song is loading and jump there
+    currentSong.addEventListener("loadedmetadata", () => {
+
+        if (pendingSeek !== null) {
+
+            currentSong.currentTime =
+                (pendingSeek / 100) * currentSong.duration;
+
+            pendingSeek = null;
+        }
+    });
 
     // this part is for mouse hover color changing of the seekbar
     seekbar.addEventListener("mousemove", (e) => {
